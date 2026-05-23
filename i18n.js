@@ -92,12 +92,7 @@ const i18n = {
         resetToNewYear: '🎊 恢复新年倒计时',
         selectEvent: '选择一个事件查看详情',
         orAddEvent: '或点击"添加新事件"创建',
-        searchEvents: '搜索事件...',
-        allCategories: '全部类别',
-        allPriorities: '全部优先级',
-        allStatus: '全部状态',
-        categoryHealth: '健康',
-        
+
         eventTitle: '事件名称',
         eventTitleRequired: '事件名称',
         eventTitlePlaceholder: '输入事件名称',
@@ -129,9 +124,7 @@ const i18n = {
         unarchive: '📤 取消归档',
         countdownMode: '⏱️ 倒计时模式',
         exitCountdown: '退出倒计时',
-        
-        selectEvent: '选择一个事件查看详情',
-        orAddEvent: '或点击"添加新事件"创建',
+
         noEvents: '暂无事件',
         
         confirmDelete: '确定要删除这个事件吗？',
@@ -319,11 +312,7 @@ const i18n = {
         resetToNewYear: '🎊 Reset to New Year',
         selectEvent: 'Select an event to view details',
         orAddEvent: 'Or click "Add New Event" to create',
-        searchEvents: 'Search events...',
-        allCategories: 'All Categories',
-        allPriorities: 'All Priorities',
-        allStatus: 'All Status',
-        categoryHealth: 'Health',
+
         eventTitleRequired: 'Event Name',
         eventTitlePlaceholder: 'Enter event name',
         eventDate: 'Date',
@@ -354,9 +343,7 @@ const i18n = {
         unarchive: '📤 Unarchive',
         countdownMode: '⏱️ Countdown Mode',
         exitCountdown: 'Exit Countdown',
-        
-        selectEvent: 'Select an event to view details',
-        orAddEvent: 'Or click "Add New Event" to create',
+
         noEvents: 'No events',
         
         confirmDelete: 'Are you sure you want to delete this event?',
@@ -544,11 +531,7 @@ const i18n = {
         resetToNewYear: '🎊 新年にリセット',
         selectEvent: 'イベントを選択して詳細を表示',
         orAddEvent: 'または「新しいイベントを追加」をクリック',
-        searchEvents: 'イベントを検索...',
-        allCategories: '全カテゴリ',
-        allPriorities: '全優先度',
-        allStatus: '全ステータス',
-        categoryHealth: '健康',
+
         eventTitleRequired: 'イベント名',
         eventTitlePlaceholder: 'イベント名を入力',
         eventDate: '日付',
@@ -579,9 +562,7 @@ const i18n = {
         unarchive: '📤 アーカイブ解除',
         countdownMode: '⏱️ カウントダウンモード',
         exitCountdown: 'カウントダウン終了',
-        
-        selectEvent: 'イベントを選択して詳細を表示',
-        orAddEvent: 'または「新しいイベントを追加」をクリック',
+
         noEvents: 'イベントなし',
         
         confirmDelete: 'このイベントを削除しますか？',
@@ -769,11 +750,7 @@ const i18n = {
         resetToNewYear: '🎊 새해로 재설정',
         selectEvent: '이벤트를 선택하여 세부 정보 보기',
         orAddEvent: '또는 "새 이벤트 추가"를 클릭',
-        searchEvents: '이벤트 검색...',
-        allCategories: '모든 카테고리',
-        allPriorities: '모든 우선순위',
-        allStatus: '모든 상태',
-        categoryHealth: '건강',
+
         eventTitleRequired: '이벤트 이름',
         eventTitlePlaceholder: '이벤트 이름 입력',
         eventDate: '날짜',
@@ -804,9 +781,7 @@ const i18n = {
         unarchive: '📤 보관 해제',
         countdownMode: '⏱️ 카운트다운 모드',
         exitCountdown: '카운트다운 종료',
-        
-        selectEvent: '이벤트를 선택하여 세부 정보 보기',
-        orAddEvent: '또는 "새 이벤트 추가"를 클릭',
+
         noEvents: '이벤트 없음',
         
         confirmDelete: '이 이벤트를 삭제하시겠습니까?',

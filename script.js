@@ -1,9 +1,30 @@
+class Utils {
+    static escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    static formatDateShort(date) {
+        const d = new Date(date);
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}/${month}/${day}`;
+    }
+
+    static generateId() {
+        return Date.now().toString(36) + Math.random().toString(36).substr(2);
+    }
+}
+
 class CountdownTimer {
     constructor() {
         this.targetDate = null;
         this.eventName = '';
         this.timerInterval = null;
         this.isCelebrating = false;
+        this.fireworkInterval = null;
         this.particles = [];
         this.fireworks = [];
         this.canvas = null;
@@ -45,20 +66,20 @@ class CountdownTimer {
             mouseConnectionDistanceSq: 200 * 200,
             mouseRadiusSq: 200 * 200,
             adaptiveQuality: true,
-            lastFrameTime: 0,
-            frameCount: 0,
             fpsHistory: [],
             currentFPS: 60,
-            qualityLevel: 1.0,
-            skipFrames: 0
+            qualityLevel: 1.0
         };
         
-        this.particlePool = [];
+        this.fpsLastTime = 0;
+        this.fpsFrameCount = 0;
+        this.fpsHistory = [];
+        this._boundAnimate = this.animate.bind(this);
+        
         this.burstPool = [];
         this.fireworkPool = [];
-        this.offscreenCanvas = null;
-        this.offscreenCtx = null;
-        this.gradientCache = new Map();
+        this.burstFreeIndices = [];
+        this.fireworkFreeIndices = [];
         this.lastTime = 0;
         this.deltaTime = 0;
         
@@ -85,7 +106,6 @@ class CountdownTimer {
         this.initEventManager();
         this.initShareManager();
         this.initHistoryManager();
-        this.startFPSMonitor();
         this.initMusicPrompt();
     }
 
@@ -132,13 +152,6 @@ class CountdownTimer {
     }
 
     setupPerformanceOptimizations() {
-        this.offscreenCanvas = document.createElement('canvas');
-        this.offscreenCtx = this.offscreenCanvas.getContext('2d', { 
-            alpha: true,
-            desynchronized: true,
-            willReadFrequently: false
-        });
-        
         this.ctx.imageSmoothingEnabled = false;
         
         const perfConfig = this.perfConfig;
@@ -157,12 +170,19 @@ class CountdownTimer {
         
         const poolSize = 200;
         for (let i = 0; i < poolSize; i++) {
-            this.burstPool.push(this.createBurstParticleTemplate());
+            const p = this.createBurstParticleTemplate();
+            p._poolIdx = i;
+            this.burstPool.push(p);
         }
         
         for (let i = 0; i < 100; i++) {
-            this.fireworkPool.push(this.createFireworkParticleTemplate());
+            const p = this.createFireworkParticleTemplate();
+            p._poolIdx = i;
+            this.fireworkPool.push(p);
         }
+        
+        this.burstFreeIndices = Array.from({length: poolSize}, (_, i) => i);
+        this.fireworkFreeIndices = Array.from({length: 100}, (_, i) => i);
     }
 
     createBurstParticleTemplate() {
@@ -176,7 +196,8 @@ class CountdownTimer {
             maxLife: 80,
             gravity: 0.02,
             friction: 0.98,
-            active: false
+            active: false,
+            _poolIdx: -1
         };
     }
 
@@ -189,28 +210,31 @@ class CountdownTimer {
             opacity: 1,
             gravity: 0.05,
             life: 0,
-            active: false
+            active: false,
+            _poolIdx: -1
         };
     }
 
     getBurstParticleFromPool() {
-        for (let i = 0; i < this.burstPool.length; i++) {
-            if (!this.burstPool[i].active) {
-                return this.burstPool[i];
-            }
+        if (this.burstFreeIndices.length > 0) {
+            const idx = this.burstFreeIndices.pop();
+            this.burstPool[idx].active = true;
+            return this.burstPool[idx];
         }
         const newParticle = this.createBurstParticleTemplate();
+        newParticle.active = true;
         this.burstPool.push(newParticle);
         return newParticle;
     }
 
     getFireworkParticleFromPool() {
-        for (let i = 0; i < this.fireworkPool.length; i++) {
-            if (!this.fireworkPool[i].active) {
-                return this.fireworkPool[i];
-            }
+        if (this.fireworkFreeIndices.length > 0) {
+            const idx = this.fireworkFreeIndices.pop();
+            this.fireworkPool[idx].active = true;
+            return this.fireworkPool[idx];
         }
         const newParticle = this.createFireworkParticleTemplate();
+        newParticle.active = true;
         this.fireworkPool.push(newParticle);
         return newParticle;
     }
@@ -251,35 +275,6 @@ class CountdownTimer {
         if (window.innerWidth < 768) {
             this.perfConfig.maxParticles = Math.min(this.perfConfig.maxParticles, 80);
         }
-    }
-
-    startFPSMonitor() {
-        let lastTime = performance.now();
-        let frameCount = 0;
-        let fpsHistory = [];
-        
-        const updateFPS = (currentTime) => {
-            frameCount++;
-            const elapsed = currentTime - lastTime;
-            
-            if (elapsed >= 1000) {
-                const fps = Math.round((frameCount * 1000) / elapsed);
-                fpsHistory.push(fps);
-                if (fpsHistory.length > 10) fpsHistory.shift();
-                
-                this.perfConfig.currentFPS = fps;
-                this.perfConfig.fpsHistory = fpsHistory;
-                
-                this.adaptQuality(fps);
-                
-                frameCount = 0;
-                lastTime = currentTime;
-            }
-            
-            requestAnimationFrame(updateFPS);
-        };
-        
-        requestAnimationFrame(updateFPS);
     }
 
     adaptQuality(currentFPS) {
@@ -363,38 +358,17 @@ class CountdownTimer {
         
         window.addEventListener('resize', () => {
             this.resizeCanvas();
-            if (this.offscreenCanvas) {
-                this.offscreenCanvas.width = this.canvas.width;
-                this.offscreenCanvas.height = this.canvas.height;
-            }
         });
         
         this.setupMouseInteraction();
     }
 
     setupMouseInteraction() {
-        this.canvas.addEventListener('mousemove', (e) => {
-            this.mouse.lastX = this.mouse.x;
-            this.mouse.lastY = this.mouse.y;
-            this.mouse.x = e.clientX;
-            this.mouse.y = e.clientY;
-        });
-
         this.canvas.addEventListener('mouseleave', () => {
             this.mouse.x = null;
             this.mouse.y = null;
         });
 
-        this.canvas.addEventListener('click', (e) => {
-            this.createBurstParticles(e.clientX, e.clientY);
-        });
-
-        this.canvas.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            this.mouse.isAttracting = !this.mouse.isAttracting;
-            console.log(`模式切换: ${this.mouse.isAttracting ? '吸引' : '排斥'}`);
-        });
-        
         document.addEventListener('mousemove', (e) => {
             this.mouse.lastX = this.mouse.x;
             this.mouse.lastY = this.mouse.y;
@@ -464,12 +438,6 @@ class CountdownTimer {
         this.canvas.style.height = height + 'px';
         
         this.ctx.scale(dpr, dpr);
-        
-        if (this.offscreenCanvas) {
-            this.offscreenCanvas.width = this.canvas.width;
-            this.offscreenCanvas.height = this.canvas.height;
-            this.offscreenCtx.scale(dpr, dpr);
-        }
     }
 
     getNextNewYear() {
@@ -642,6 +610,7 @@ class CountdownTimer {
     resetCountdown() {
         this.isCelebrating = false;
         this.loadCustomSettings();
+        if (this.fireworkInterval) { clearInterval(this.fireworkInterval); this.fireworkInterval = null; }
         this.fireworks = [];
         
         const countdownContainer = document.getElementById('countdownContainer');
@@ -651,13 +620,15 @@ class CountdownTimer {
         countdownContainer.classList.remove('hidden');
         
         this.updateTargetYear();
+        clearInterval(this.timerInterval);
         this.startCountdown();
     }
 
     startParticleSystem() {
         this.createParticles();
         this.lastTime = performance.now();
-        this.animate();
+        this.fpsLastTime = performance.now();
+        this._boundAnimate(this.lastTime);
     }
 
     createParticle() {
@@ -692,6 +663,19 @@ class CountdownTimer {
         this.deltaTime = Math.min(currentTime - this.lastTime, 32);
         this.lastTime = currentTime;
         
+        this.fpsFrameCount++;
+        const fpsElapsed = currentTime - this.fpsLastTime;
+        if (fpsElapsed >= 1000) {
+            const fps = Math.round((this.fpsFrameCount * 1000) / fpsElapsed);
+            this.fpsHistory.push(fps);
+            if (this.fpsHistory.length > 10) this.fpsHistory.shift();
+            this.perfConfig.currentFPS = fps;
+            this.perfConfig.fpsHistory = this.fpsHistory;
+            this.adaptQuality(fps);
+            this.fpsFrameCount = 0;
+            this.fpsLastTime = currentTime;
+        }
+        
         const ctx = this.ctx;
         const width = window.innerWidth;
         const height = window.innerHeight;
@@ -711,7 +695,7 @@ class CountdownTimer {
         this.updateAndDrawFireworksOptimized();
         this.updateAndDrawBurstParticlesOptimized();
         
-        this.animationId = requestAnimationFrame((t) => this.animate(t));
+        this.animationId = requestAnimationFrame(this._boundAnimate);
     }
 
     drawParticleConnectionsOptimized() {
@@ -805,6 +789,7 @@ class CountdownTimer {
                 ctx.globalAlpha = p.opacity;
                 ctx.fill();
             } else {
+                this.burstFreeIndices.push(p._poolIdx);
                 p.active = false;
             }
         }
@@ -950,7 +935,7 @@ class CountdownTimer {
     }
 
     startFireworks() {
-        setInterval(() => {
+        this.fireworkInterval = setInterval(() => {
             if (this.isCelebrating) {
                 this.createFirework();
             }
@@ -1010,6 +995,7 @@ class CountdownTimer {
                 ctx.globalAlpha = f.opacity;
                 ctx.fill();
             } else {
+                this.fireworkFreeIndices.push(f._poolIdx);
                 f.active = false;
             }
         }
@@ -1571,11 +1557,9 @@ class CountdownTimer {
         const themeChangeDelay = rippleConfig.duration * 0.3;
         
         setTimeout(() => {
-            body.classList.remove('theme-festival', 'theme-neon', 'theme-luxury', 'theme-space', 'theme-soft', 'theme-blue', 'theme-purple', 'theme-gold', 'theme-emerald', 'theme-black');
+            body.classList.remove('theme-festival', 'theme-neon', 'theme-luxury', 'theme-space', 'theme-soft', 'theme-red', 'theme-blue', 'theme-purple', 'theme-gold', 'theme-emerald', 'theme-black');
             
-            if (theme !== 'red') {
-                body.classList.add(`theme-${theme}`);
-            }
+            body.classList.add(`theme-${theme}`);
             
             this.updateActiveThemeButton(theme);
             this.saveTheme(theme);
@@ -1819,12 +1803,6 @@ class EventManager {
         if (countdownModeBtn) {
             countdownModeBtn.addEventListener('click', () => this.toggleCountdownMode());
         }
-
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                this.closeEventsPanel();
-            }
-        });
     }
 
     openEventsPanel() {
@@ -1842,10 +1820,6 @@ class EventManager {
             eventsPanel.classList.add('hidden');
             this.selectedEventId = null;
         }
-    }
-
-    generateId() {
-        return Date.now().toString(36) + Math.random().toString(36).substr(2);
     }
 
     showAddEventForm() {
@@ -1938,7 +1912,7 @@ class EventManager {
         const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(t => t) : [];
 
         const eventData = {
-            id: eventId || this.generateId(),
+            id: eventId || Utils.generateId(),
             title,
             date,
             time,
@@ -2091,7 +2065,7 @@ class EventManager {
             
             return `
                 <div class="event-item ${isActive ? 'active' : ''} ${event.status}" data-id="${event.id}">
-                    <div class="event-item-title">${this.escapeHtml(event.title)}</div>
+                    <div class="event-item-title">${Utils.escapeHtml(event.title)}</div>
                     <div class="event-item-date">${dateStr}</div>
                     <div class="event-item-badges">
                         <span class="event-badge category-${event.category}">${this.getCategoryLabel(event.category)}</span>
@@ -2145,12 +2119,6 @@ class EventManager {
         return `${year}/${month}/${day}`;
     }
 
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
     setupReminders() {
         this.reminderTimeouts.forEach(timeout => clearTimeout(timeout));
         this.reminderTimeouts.clear();
@@ -2174,14 +2142,16 @@ class EventManager {
     }
 
     showReminder(event) {
+        const body = `${event.title}\n${this.formatEventDate(event.date, event.time)}`;
+        
         if ('Notification' in window && Notification.permission === 'granted') {
             new Notification(i18nManager.t('notification.eventReminder'), {
-                body: `${event.title}\n${this.formatEventDate(event.date, event.time)}`,
+                body: body,
                 icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📅</text></svg>'
             });
+        } else {
+            alert(`${i18nManager.t('notification.eventReminder')}\n\n${body}`);
         }
-
-        alert(`${i18nManager.t('notification.eventReminder')}\n\n${event.title}\n${this.formatEventDate(event.date, event.time)}`);
     }
 
     toggleCountdownMode() {
@@ -2264,7 +2234,7 @@ class EventManager {
         const tagsContainer = document.getElementById('detailTags');
         if (event.tags && event.tags.length > 0) {
             tagsContainer.innerHTML = event.tags.map(tag => 
-                `<span class="tag-badge">${this.escapeHtml(tag)}</span>`
+                `<span class="tag-badge">${Utils.escapeHtml(tag)}</span>`
             ).join('');
             document.getElementById('detailTagsContainer').style.display = 'flex';
         } else {
@@ -2326,7 +2296,6 @@ class ShareManager {
 
     init() {
         this.setupEventListeners();
-        this.generateQRCode();
     }
 
     setupEventListeners() {
@@ -2335,7 +2304,6 @@ class ShareManager {
         const closeShare = document.getElementById('closeShare');
         const copyShareUrl = document.getElementById('copyShareUrl');
         const copyShareText = document.getElementById('copyShareText');
-        const refreshQRCode = document.getElementById('refreshQRCode');
         const platformBtns = document.querySelectorAll('.share-platform-btn');
 
         if (shareBtn) {
@@ -2362,21 +2330,11 @@ class ShareManager {
             copyShareText.addEventListener('click', () => this.copyShareText());
         }
 
-        if (refreshQRCode) {
-            refreshQRCode.addEventListener('click', () => this.generateQRCode());
-        }
-
         platformBtns.forEach(btn => {
             btn.addEventListener('click', () => {
                 const platform = btn.dataset.platform;
                 this.shareToPlatform(platform);
             });
-        });
-
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                this.closeSharePanel();
-            }
         });
     }
 
@@ -2385,7 +2343,6 @@ class ShareManager {
         if (sharePanel) {
             sharePanel.classList.remove('hidden');
             this.updateShareContent();
-            this.generateQRCode();
         }
     }
 
@@ -2410,7 +2367,7 @@ class ShareManager {
         document.getElementById('shareHours').textContent = hours;
         document.getElementById('shareMinutes').textContent = minutes;
         document.getElementById('shareTargetDate').textContent = targetDate ? 
-            `${i18nManager.t('target')}: ${this.formatDateShort(targetDate)}` : '';
+            `${i18nManager.t('target')}: ${Utils.formatDateShort(targetDate)}` : '';
         
         const shareUrl = window.location.href;
         const shareUrlInput = document.getElementById('shareUrlInput');
@@ -2423,117 +2380,9 @@ class ShareManager {
             const daysLabel = i18nManager.t('days');
             const hoursLabel = i18nManager.t('hours');
             const minutesLabel = i18nManager.t('minutes');
-            const text = `🎊 ${eventName}\n⏰ ${i18nManager.t('countdownTitle').replace('还有', '').trim()} ${daysLabel} ${hoursLabel} ${minutesLabel}\n📅 ${targetDate ? this.formatDateShort(targetDate) : ''}\n\n${i18nManager.t('shareTogether')}\n${shareUrl}`;
+            const text = `🎊 ${eventName}\n⏰ ${i18nManager.t('countdownTitle').replace('还有', '').trim()} ${daysLabel} ${hoursLabel} ${minutesLabel}\n📅 ${targetDate ? Utils.formatDateShort(targetDate) : ''}\n\n${i18nManager.t('shareTogether')}\n${shareUrl}`;
             shareText.value = text;
         }
-    }
-
-    formatDateShort(date) {
-        const d = new Date(date);
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${year}/${month}/${day}`;
-    }
-
-    generateQRCode() {
-        const canvas = document.getElementById('qrcodeCanvas');
-        if (!canvas) return;
-        
-        const ctx = canvas.getContext('2d');
-        const size = 150;
-        const url = window.location.href;
-        
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, size, size);
-        
-        this.drawQRCode(ctx, url, size);
-    }
-
-    drawQRCode(ctx, text, size) {
-        const moduleCount = 25;
-        const moduleSize = size / moduleCount;
-        const qrMatrix = this.generateQRMatrix(text, moduleCount);
-        
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, size, size);
-        
-        ctx.fillStyle = '#7C3AED';
-        
-        for (let row = 0; row < moduleCount; row++) {
-            for (let col = 0; col < moduleCount; col++) {
-                if (qrMatrix[row][col]) {
-                    const x = col * moduleSize;
-                    const y = row * moduleSize;
-                    ctx.beginPath();
-                    ctx.roundRect(x + 0.5, y + 0.5, moduleSize - 1, moduleSize - 1, 1);
-                    ctx.fill();
-                }
-            }
-        }
-        
-        this.drawFinderPattern(ctx, 0, 0, moduleSize);
-        this.drawFinderPattern(ctx, moduleCount - 7, 0, moduleSize);
-        this.drawFinderPattern(ctx, 0, moduleCount - 7, moduleSize);
-    }
-
-    drawFinderPattern(ctx, startX, startY, moduleSize) {
-        const x = startX * moduleSize;
-        const y = startY * moduleSize;
-        
-        ctx.fillStyle = '#7C3AED';
-        ctx.beginPath();
-        ctx.roundRect(x, y, moduleSize * 7, moduleSize * 7, 4);
-        ctx.fill();
-        
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.roundRect(x + moduleSize, y + moduleSize, moduleSize * 5, moduleSize * 5, 3);
-        ctx.fill();
-        
-        ctx.fillStyle = '#7C3AED';
-        ctx.beginPath();
-        ctx.roundRect(x + moduleSize * 2, y + moduleSize * 2, moduleSize * 3, moduleSize * 3, 2);
-        ctx.fill();
-    }
-
-    generateQRMatrix(text, size) {
-        const matrix = [];
-        const hash = this.simpleHash(text);
-        
-        for (let i = 0; i < size; i++) {
-            matrix[i] = [];
-            for (let j = 0; j < size; j++) {
-                if (i < 8 && j < 8) {
-                    matrix[i][j] = this.getFinderPattern(i, j);
-                } else if (i < 8 && j >= size - 8) {
-                    matrix[i][j] = this.getFinderPattern(i, j - (size - 8));
-                } else if (i >= size - 8 && j < 8) {
-                    matrix[i][j] = this.getFinderPattern(i - (size - 8), j);
-                } else {
-                    const seed = hash + i * size + j;
-                    matrix[i][j] = (seed * 1103515245 + 12345) % 2 === 0;
-                }
-            }
-        }
-        
-        return matrix;
-    }
-
-    getFinderPattern(row, col) {
-        if (row === 0 || row === 6 || col === 0 || col === 6) return true;
-        if (row >= 2 && row <= 4 && col >= 2 && col <= 4) return true;
-        return false;
-    }
-
-    simpleHash(str) {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            const char = str.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash;
-        }
-        return Math.abs(hash);
     }
 
     copyShareUrl() {
@@ -2670,7 +2519,7 @@ class HistoryManager {
 
     addHistoryEntry(event, status) {
         const entry = {
-            id: this.generateId(),
+            id: Utils.generateId(),
             eventId: event.id,
             title: event.title,
             category: event.category,
@@ -2686,10 +2535,6 @@ class HistoryManager {
         this.history.unshift(entry);
         this.saveHistory();
         return entry;
-    }
-
-    generateId() {
-        return Date.now().toString(36) + Math.random().toString(36).substr(2);
     }
 
     setupEventListeners() {
@@ -2722,12 +2567,6 @@ class HistoryManager {
         if (historyFilterYear) {
             historyFilterYear.addEventListener('change', () => this.renderTimeline());
         }
-
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                this.closeHistoryPanel();
-            }
-        });
     }
 
     openHistoryPanel() {
@@ -3000,37 +2839,23 @@ class HistoryManager {
                     <div class="flex-1">
                         <div class="flex items-center gap-2 mb-1">
                             <span>${statusIcon}</span>
-                            <span class="text-white font-medium timeline-entry-title">${this.escapeHtml(entry.title)}</span>
+                            <span class="text-white font-medium timeline-entry-title">${Utils.escapeHtml(entry.title)}</span>
                             <span class="text-xs px-2 py-0.5 rounded-full bg-white/10 ${statusClass}">${statusText}</span>
                         </div>
                         <div class="flex items-center gap-3 text-xs text-white/50">
                             <span>📁 ${this.getCategoryLabel(entry.category)}</span>
-                            <span>🎯 ${i18nManager.t('target')}: ${this.formatDateShort(entry.targetDate)}</span>
+                            <span>🎯 ${i18nManager.t('target')}: ${Utils.formatDateShort(entry.targetDate)}</span>
                             <span>⏰ ${timeStr}</span>
                         </div>
                         ${entry.tags && entry.tags.length > 0 ? `
                             <div class="flex gap-1 mt-2">
-                                ${entry.tags.map(tag => `<span class="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">${this.escapeHtml(tag)}</span>`).join('')}
+                                ${entry.tags.map(tag => `<span class="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">${Utils.escapeHtml(tag)}</span>`).join('')}
                             </div>
                         ` : ''}
                     </div>
                 </div>
             </div>
         `;
-    }
-
-    formatDateShort(dateStr) {
-        const d = new Date(dateStr);
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${year}/${month}/${day}`;
-    }
-
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
     }
 
     recordEventCompletion(event) {
